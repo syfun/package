@@ -1,0 +1,17 @@
+version: '3'
+
+volumes:
+  postgres:
+
+
+services:
+  postgres:
+    image: postgres:10-alpine
+    volumes:
+    - postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=package
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+    - 5432:5432
