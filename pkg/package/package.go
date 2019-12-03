@@ -2,6 +2,7 @@ package _package
 
 import (
 	"fmt"
+	"io"
 )
 
 type Package struct {
@@ -23,11 +24,10 @@ type PackageIn struct {
 }
 
 type VersionIn struct {
-	PackageName string `json:"package_name"`
-	Name        string `json:"name"`
-	FileName    string `json:"file_name"`
-	Content     []byte `json:"content"`
-	PackageID   string `json:"package_id"`
+	PackageName string    `json:"package_name"`
+	Name        string    `json:"name"`
+	FileName    string    `json:"file_name"`
+	Reader      io.Reader
 }
 
 type Service interface {
@@ -35,9 +35,9 @@ type Service interface {
 	ListPackages(fuzzyName string) ([]*Package, error)
 	GetPackage(name string) (*Package, error)
 	AddVersion(v *VersionIn) (*Version, error)
-	DownloadPackage(packageName string, versionName string) ([]byte, error)
+	DownloadPackage(packageName string, versionName string) (io.Reader, error)
 	DeletePackage(name string) error
-	DeleteVersion(name string) error
+	DeleteVersion(packageName string, versionName string) error
 }
 
 type Repo interface {
@@ -45,19 +45,23 @@ type Repo interface {
 	ListPackages(fuzzyName string) ([]*Package, error)
 	GetPackage(name string) (*Package, error)
 	InsertVersion(v *Version) (*Version, error)
-	GetVersion(packageID int64, versionName string) ([]byte, error)
+	GetVersion(packageID int64, versionName string) (*Version, error)
 	DeletePackage(name string) error
 	DeleteVersion(packageID int64, versionName string) error
 }
 
 type Storage interface {
-	Upload(name string, d []byte) (size int64, err error)
-	Download(name string) ([]byte, error)
+	Upload(name string, r io.Reader) (size int64, err error)
+	Download(name string) (io.Reader, error)
 }
 
 type service struct {
 	repo    Repo
 	storage Storage
+}
+
+func NewService(r Repo, s Storage) Service {
+	return &service{repo: r, storage: s}
 }
 
 func (s *service) AddPackage(p *PackageIn) (*Package, error) {
@@ -85,7 +89,7 @@ func (s *service) GetPackage(name string) (*Package, error) {
 }
 
 func (s *service) AddVersion(v *VersionIn) (*Version, error) {
-	size, err := s.storage.Upload(fmt.Sprintf("%v/%v/%v", v.PackageName, v.Name, v.FileName), v.Content)
+	size, err := s.storage.Upload(fmt.Sprintf("%v/%v/%v", v.PackageName, v.Name, v.FileName), v.Reader)
 	if err != nil {
 		return nil, fmt.Errorf("cannot add package version: %w", err)
 	}
@@ -108,16 +112,21 @@ func (s *service) AddVersion(v *VersionIn) (*Version, error) {
 	return version, nil
 }
 
-func (s *service) DownloadPackage(packageName, versionName string) ([]byte, error) {
+func (s *service) DownloadPackage(packageName, versionName string) (io.Reader, error) {
 	p, err := s.repo.GetPackage(packageName)
 	if err != nil {
 		return nil, fmt.Errorf("cannot download package version: %w", err)
 	}
-	d, err := s.repo.GetVersion(p.ID, versionName)
+	v, err := s.repo.GetVersion(p.ID, versionName)
 	if err != nil {
 		return nil, fmt.Errorf("cannot download package: %w", err)
 	}
-	return d, nil
+
+	r, err := s.storage.Download(fmt.Sprintf("%v/%v/%v", packageName, versionName, v.FileName))
+	if err != nil {
+		return nil, fmt.Errorf("cannot download package: %w", err)
+	}
+	return r, nil
 }
 
 func (s *service) DeletePackage(name string) error {
