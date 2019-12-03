@@ -1,6 +1,8 @@
 package postgres
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
@@ -58,8 +60,25 @@ func (d *Database) GetPackage(name string) (*_package.Package, error) {
 	p := _package.Package{}
 	q := `SELECT * FROM packages WHERE name=$1`
 	if err := d.db.Get(&p, q, name); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
+	q = `SELECT * FROM versions WHERE package_id=$1`
+	rows, err := d.db.Queryx(q, p.ID)
+	if err != nil {
+		return nil, err
+	}
+	versions := make([]*_package.Version, 0)
+	for rows.Next() {
+		var v _package.Version
+		if err := rows.StructScan(&v); err != nil {
+			return nil, err
+		}
+		versions = append(versions, &v)
+	}
+	p.Versions = versions
 	return &p, nil
 }
 
@@ -73,11 +92,20 @@ func (d *Database) InsertVersion(v *_package.Version) (*_package.Version, error)
 
 func (d *Database) GetVersion(packageID int64, name string) (*_package.Version, error) {
 	q := `SELECT * FROM versions WHERE package_id=$1 and name=$2`
-	v := new(_package.Version)
+	v := _package.Version{}
 	if err := d.db.Get(&v, q, packageID, name); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
-	return v, nil
+	return &v, nil
+}
+
+func (d *Database) UpdateVersion(v *_package.Version) error {
+	q := `UPDATE versions set file_name=$1, size=$2, checksum=$3 WHERE id=$4`
+	_, err := d.db.Exec(q, v.FileName, v.Size, v.Checksum, v.ID)
+	return err
 }
 
 func (d *Database) DeletePackage(name string) error {

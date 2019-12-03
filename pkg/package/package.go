@@ -1,22 +1,24 @@
 package _package
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
 
 type Package struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
+	ID       int64      `json:"id"`
+	Name     string     `json:"name"`
+	Versions []*Version `json:"versions"`
 }
 
 type Version struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`
-	FileName  string `json:"file_name"`
+	FileName  string `json:"file_name" db:"file_name"`
 	Size      int64  `json:"size"`
 	Checksum  string `json:"checksum"`
-	PackageID int64  `json:"package_id"`
+	PackageID int64  `json:"package_id" db:"package_id"`
 }
 
 type PackageIn struct {
@@ -24,9 +26,9 @@ type PackageIn struct {
 }
 
 type VersionIn struct {
-	PackageName string    `json:"package_name"`
-	Name        string    `json:"name"`
-	FileName    string    `json:"file_name"`
+	PackageName string `json:"package_name"`
+	Name        string `json:"name"`
+	FileName    string `json:"file_name"`
 	Reader      io.Reader
 }
 
@@ -35,7 +37,7 @@ type Service interface {
 	ListPackages(fuzzyName string) ([]*Package, error)
 	GetPackage(name string) (*Package, error)
 	AddVersion(v *VersionIn) (*Version, error)
-	DownloadPackage(packageName string, versionName string) (io.Reader, error)
+	DownloadPackage(packageName string, versionName string) (*Version, io.ReadCloser, error)
 	DeletePackage(name string) error
 	DeleteVersion(packageName string, versionName string) error
 }
@@ -48,11 +50,12 @@ type Repo interface {
 	GetVersion(packageID int64, versionName string) (*Version, error)
 	DeletePackage(name string) error
 	DeleteVersion(packageID int64, versionName string) error
+	UpdateVersion(v *Version) error
 }
 
 type Storage interface {
 	Upload(name string, r io.Reader) (size int64, err error)
-	Download(name string) (io.Reader, error)
+	Download(name string) (io.ReadCloser, error)
 }
 
 type service struct {
@@ -89,16 +92,33 @@ func (s *service) GetPackage(name string) (*Package, error) {
 }
 
 func (s *service) AddVersion(v *VersionIn) (*Version, error) {
-	size, err := s.storage.Upload(fmt.Sprintf("%v/%v/%v", v.PackageName, v.Name, v.FileName), v.Reader)
-	if err != nil {
-		return nil, fmt.Errorf("cannot add package version: %w", err)
-	}
 	p, err := s.repo.GetPackage(v.PackageName)
 	if err != nil {
 		return nil, fmt.Errorf("cannot add package version: %w", err)
 	}
+	if p == nil {
+		return nil, errors.New("package not found")
+	}
+	size, err := s.storage.Upload(fmt.Sprintf("%v/%v/%v", v.PackageName, v.Name, v.FileName), v.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("cannot add package version: %w", err)
+	}
 
-	version := &Version{
+	version, err := s.repo.GetVersion(p.ID, v.Name)
+	if err != nil {
+		return nil, fmt.Errorf("cannot add package version: %w", err)
+	}
+	if version != nil {
+		version.FileName = v.FileName
+		version.Size = size
+		version.Checksum = ""
+		if err := s.repo.UpdateVersion(version); err != nil {
+			return nil, fmt.Errorf("cannot add package version: %w", err)
+		}
+		return version, nil
+	}
+
+	version = &Version{
 		Name:      v.Name,
 		FileName:  v.FileName,
 		Size:      size,
@@ -112,21 +132,24 @@ func (s *service) AddVersion(v *VersionIn) (*Version, error) {
 	return version, nil
 }
 
-func (s *service) DownloadPackage(packageName, versionName string) (io.Reader, error) {
+func (s *service) DownloadPackage(packageName, versionName string) (*Version, io.ReadCloser, error) {
 	p, err := s.repo.GetPackage(packageName)
 	if err != nil {
-		return nil, fmt.Errorf("cannot download package version: %w", err)
+		return nil, nil, fmt.Errorf("cannot download package version: %w", err)
 	}
 	v, err := s.repo.GetVersion(p.ID, versionName)
 	if err != nil {
-		return nil, fmt.Errorf("cannot download package: %w", err)
+		return nil, nil, fmt.Errorf("cannot download package: %w", err)
+	}
+	if v == nil {
+		return nil, nil, nil
 	}
 
 	r, err := s.storage.Download(fmt.Sprintf("%v/%v/%v", packageName, versionName, v.FileName))
 	if err != nil {
-		return nil, fmt.Errorf("cannot download package: %w", err)
+		return nil, nil, fmt.Errorf("cannot download package: %w", err)
 	}
-	return r, nil
+	return v, r, nil
 }
 
 func (s *service) DeletePackage(name string) error {
@@ -135,6 +158,7 @@ func (s *service) DeletePackage(name string) error {
 	}
 	return nil
 }
+
 func (s *service) DeleteVersion(packageName, versionName string) error {
 	p, err := s.repo.GetPackage(packageName)
 	if err != nil {

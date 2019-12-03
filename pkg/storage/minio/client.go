@@ -21,9 +21,9 @@ func New(endpoint, accessKeyID, secretAccessKey, region, bucket string, useSSL b
 }
 
 func (c *Client) Upload(name string, r io.Reader) (size int64, err error) {
-	return c.c.PutObject(c.bucket, name, r, size, minio.PutObjectOptions{ContentType: "application/octet-stream"})
+	return c.c.PutObject(c.bucket, name, r, -1, minio.PutObjectOptions{ContentType: "application/octet-stream"})
 }
 
-func (c *Client) Download(name string) (io.Reader, error) {
+func (c *Client) Download(name string) (io.ReadCloser, error) {
 	return c.c.GetObject(c.bucket, name, minio.GetObjectOptions{})
 }
