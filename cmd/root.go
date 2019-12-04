@@ -61,7 +61,8 @@ func init() {
   // will be global for your application.
 
   rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.package.yaml)")
-
+  rootCmd.PersistentFlags().StringP("server", "", "http://localhost:8080", "server url")
+  viper.BindPFlag("server", rootCmd.PersistentFlags().Lookup("server"))
 
   // Cobra also supports local flags, which will only run
   // when this action is called directly.

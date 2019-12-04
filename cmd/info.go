@@ -24,9 +24,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// listCmd represents the list command
-var listCmd = &cobra.Command{
-	Use:   "list",
+// infoCmd represents the info command
+var infoCmd = &cobra.Command{
+	Use:   "info",
 	Short: "A brief description of your command",
 	Long: `A longer description that spans multiple lines and likely contains examples
 and usage of using your command. For example:
@@ -34,64 +34,43 @@ and usage of using your command. For example:
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		//fmt.Println("list called")
-		listPackages(cmd.Flag("fuzzyName").Value.String())
+		getPackage(args[0])
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(infoCmd)
 
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
-	// listCmd.PersistentFlags().String("foo", "", "A help for foo")
+	// infoCmd.PersistentFlags().String("foo", "", "A help for foo")
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
-	// listCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-	listCmd.Flags().StringP("fuzzyName", "n", "", "fuzzy name")
+	// infoCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
-func printTable(headers []string, data [][]interface{}) {
-	l := len(headers)
-	if l == 0 {
-		return
-	}
-
-	s := ""
-	for _, h := range headers {
-		s += h + "\t"
-	}
-	fmt.Println(s)
-
-	for _, d := range data {
-		s := ""
-		for i, v := range d {
-			s = fmt.Sprintf("%v%v\t", s, v)
-			if i+1 > l {
-				break
-			}
-		}
-		fmt.Println(s)
-	}
-}
-
-func listPackages(fuzzyName string) {
-	url := fmt.Sprintf(viper.GetString("server") + "/api/v1/packages/?fuzzy_nam=%v", fuzzyName)
+func getPackage(name string) {
+	url := fmt.Sprintf("%v/api/v1/packages/%v/", viper.GetString("server"), name)
 	resp, err := Get(url)
 	if err != nil {
 		log.Fatal(err)
 	}
-	var packages []_package.Package
-	if err := resp.Decode(&packages); err != nil {
+	var p _package.Package
+	if err := resp.Decode(&p); err != nil {
 		log.Fatal(err)
 	}
-	var data [][]interface{}
-	for _, p := range packages {
-		data = append(data, []interface{}{p.ID, p.Name})
+	fmt.Printf("Package:\n\nID: %v\nName: %v\n\n", p.ID, p.Name)
+	if p.Versions == nil || len(p.Versions) == 0 {
+		return
 	}
-	printTable([]string{"ID", "Name"}, data)
+	var data [][]interface{}
+	for _, v := range p.Versions {
+		data = append(data, []interface{}{v.ID, v.Name, v.Size, v.FileName})
+	}
+	printTable([]string{"ID", "Name", "Size", "FileName"}, data)
 }

@@ -18,6 +18,7 @@ package cmd
 import (
 	"fmt"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"log"
 )
 
@@ -50,7 +51,7 @@ func init() {
 }
 
 func addPackage(name string) {
-	_, err := Post("http://localhost:8080/api/v1/packages/", JSON{"name": name})
+	_, err := Post(viper.GetString("server") + "/api/v1/packages/", JSON{"name": name})
 	if err != nil {
 		log.Fatal(err)
 	}
