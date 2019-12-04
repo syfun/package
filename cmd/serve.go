@@ -17,8 +17,8 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
 	"github.com/syfun/package/pkg/http/rest"
 	_package "github.com/syfun/package/pkg/package"
 	"github.com/syfun/package/pkg/repo/postgres"
@@ -36,17 +36,22 @@ import (
 // serveCmd represents the serve command
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "run the package server",
+	Long:  `Run the package server with the minio or s3 backend, also postgres.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("serve called")
+		serve()
 	},
 }
+
+//var endpoint string
+////var accessKey string
+////var secretKey string
+////var region string
+////var bucket string
+////var useSSL bool
+////var dsn string
+////var addr string
+////var release bool
 
 func init() {
 	rootCmd.AddCommand(serveCmd)
@@ -60,36 +65,44 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// serveCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+
+	serveCmd.Flags().StringP("endpoint", "e", "minio.example.com", "minio/s3 endpoint")
+	serveCmd.Flags().StringP("accessKey", "", "admin", "minio/s3 access key id")
+	serveCmd.Flags().StringP("secretKey", "", "admin", "minio/s3 secret key")
+	serveCmd.Flags().StringP("region", "r", "", "minio/s3 region")
+	serveCmd.Flags().StringP("bucket", "b", "package", "minio/s3 bucket")
+	serveCmd.Flags().BoolP("useSSL", "", true, "whether use ssl to connect minio/s3")
+	serveCmd.Flags().StringP("dsn", "s", "postgres://postgres@localhost:5432/package?sslmode=disable", "database source name")
+	serveCmd.Flags().StringP("addr", "a", ":8080", "server address")
+	serveCmd.Flags().BoolP("release", "", false, "whether serve in release mode")
+	//viper.BindPFlag("author", serveCmd.Flags().Lookup("author"))
+
+	viper.BindPFlags(serveCmd.Flags())
 }
 
-var endpoint string
-var acccessKeyID string
-var secretAccessKey string
-var region string
-var bucket string
-var useSSL bool
-var pgDSN string
-
-func run() {
-	db, err := postgres.New("postgres://postgres@localhost:5432/package?sslmode=disable")
+func serve() {
+	db, err := postgres.New(viper.GetString("dsn"))
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer db.Close()
 
 	storage, err := minio.New(
-		"minio.teletraan.io",
-		"admin",
-		"teletraan",
-		"",
-		"package",
-		true,
+		viper.GetString("endpoint"),
+		viper.GetString("accessKey"),
+		viper.GetString("secretKey"),
+		viper.GetString("region"),
+		viper.GetString("bucket"),
+		viper.GetBool("useSSL"),
 	)
 	if err != nil {
 		log.Fatal(err)
 	}
 	s := _package.NewService(db, storage)
 
+	if viper.GetBool("release") {
+		gin.SetMode(gin.ReleaseMode)
+	}
 	r := gin.Default()
 	rest.LoadRouters(r, s)
 
