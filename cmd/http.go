@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
@@ -15,6 +16,21 @@ type Response struct {
 func (r *Response) Decode(v interface{}) error {
 	defer r.Body.Close()
 	return json.NewDecoder(r.Body).Decode(v)
+}
+
+func (r *Response) Json() (JSON, error) {
+	var j JSON
+	defer r.Body.Close()
+	if err := json.NewDecoder(r.Body).Decode(&j); err != nil {
+		return nil, err
+	}
+	return j, nil
+}
+
+func (r *Response) Error() string {
+	data, err := r.Json()
+	check(err)
+	return fmt.Sprintln(data)
 }
 
 func Post(url string, data interface{}) (*Response, error) {

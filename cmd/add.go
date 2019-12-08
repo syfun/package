@@ -17,9 +17,9 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"log"
 )
 
 // addCmd represents the add command
@@ -51,9 +51,11 @@ func init() {
 }
 
 func addPackage(name string) {
-	_, err := Post(viper.GetString("server") + "/api/v1/packages/", JSON{"name": name})
-	if err != nil {
-		log.Fatal(err)
+	resp, err := Post(viper.GetString("server") + "/api/v1/packages/", JSON{"name": name})
+	check(err)
+	if resp.StatusCode != 201 {
+		fmt.Println(resp.Error())
+		return
 	}
 	fmt.Printf("Added %v\n", name)
 }

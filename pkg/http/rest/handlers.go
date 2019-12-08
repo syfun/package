@@ -28,7 +28,7 @@ func addPackage(s _package.Service) func(*gin.Context) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
-		ctx.JSON(200, &p)
+		ctx.JSON(201, &p)
 	}
 }
 
@@ -82,7 +82,7 @@ func addVersion(s _package.Service) func(*gin.Context) {
 			ctx.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
-		ctx.JSON(200, v)
+		ctx.JSON(201, v)
 	}
 }
 func downloadPackage(s _package.Service) func(*gin.Context) {

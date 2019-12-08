@@ -17,11 +17,10 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/spf13/viper"
-	_package "github.com/syfun/package/pkg/package"
-	"log"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	_package "github.com/syfun/package/pkg/package"
 )
 
 // listCmd represents the list command
@@ -82,13 +81,15 @@ func printTable(headers []string, data [][]interface{}) {
 func listPackages(fuzzyName string) {
 	url := fmt.Sprintf(viper.GetString("server") + "/api/v1/packages/?fuzzy_nam=%v", fuzzyName)
 	resp, err := Get(url)
-	if err != nil {
-		log.Fatal(err)
+	check(err)
+	if resp.StatusCode != 200 {
+		fmt.Println(resp.Error())
+		return
 	}
+
 	var packages []_package.Package
-	if err := resp.Decode(&packages); err != nil {
-		log.Fatal(err)
-	}
+	check(resp.Decode(&packages))
+
 	var data [][]interface{}
 	for _, p := range packages {
 		data = append(data, []interface{}{p.ID, p.Name})

@@ -16,21 +16,19 @@ limitations under the License.
 package cmd
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"log"
-	"mime/multipart"
-	"net/http"
+	"mime"
 	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
-// uploadCmd represents the upload command
-var uploadCmd = &cobra.Command{
-	Use:   "upload",
+// downloadCmd represents the download command
+var downloadCmd = &cobra.Command{
+	Use:   "download",
 	Short: "A brief description of your command",
 	Long: `A longer description that spans multiple lines and likely contains examples
 and usage of using your command. For example:
@@ -38,64 +36,54 @@ and usage of using your command. For example:
 Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
-	Args: cobra.ExactArgs(2),
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		uploadPackage(args[0], cmd.Flag("version").Value.String(), args[1])
+		downloadPackage(args[0], cmd.Flag("version").Value.String())
 	},
 }
 
 func init() {
-	rootCmd.AddCommand(uploadCmd)
+	rootCmd.AddCommand(downloadCmd)
 
 	// Here you will define your flags and configuration settings.
 
 	// Cobra supports Persistent Flags which will work for this command
 	// and all subcommands, e.g.:
-	// uploadCmd.PersistentFlags().String("foo", "", "A help for foo")
+	// downloadCmd.PersistentFlags().String("foo", "", "A help for foo")
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
-	// uploadCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-	uploadCmd.Flags().StringP("version", "v", "latest", "package name")
+	// downloadCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	downloadCmd.Flags().StringP("version", "v", "latest", "package version")
 }
 
-func uploadPackage(packageName, versionName, filePath string) {
-	buf := new(bytes.Buffer)
-	w := multipart.NewWriter(buf)
-	if versionName == "" {
-		versionName = "latest"
-	}
-
-	if err := w.WriteField("name", versionName); err != nil {
-		log.Fatal(err)
-	}
-
-	file, err := os.Open(filePath)
+func check(err error) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer file.Close()
-	fileInfo, err := file.Stat()
-	if err != nil {
-		log.Fatal(err)
-	}
-	fw, err := w.CreateFormFile("file", fileInfo.Name())
-	if _, err := io.Copy(fw, file); err != nil {
-		log.Fatal(err)
-	}
-	w.Close()
+}
 
-	url := fmt.Sprintf("%v/api/v1/packages/%v/versions/", viper.GetString("server"), packageName)
-	req, _ := http.NewRequest("POST", url, buf)
-	req.Header.Set("Content-Type", w.FormDataContentType())
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if resp.StatusCode != 201 {
-		r := Response{resp}
-		fmt.Println(r.Error())
+func downloadPackage(packageName, versionName string) {
+	url := fmt.Sprintf("%v/api/v1/packages/%v/versions/%v/", viper.GetString("server"), packageName, versionName)
+	resp, err := Get(url)
+	check(err)
+
+	if resp.StatusCode != 200 {
+		fmt.Println(resp.Error())
 		return
 	}
-	fmt.Println("Added package version")
+	dis := resp.Header.Get("Content-Disposition")
+	fileName := fmt.Sprintf("%v_%v", packageName, versionName)
+	if dis != "" {
+		_, params, err := mime.ParseMediaType(dis)
+		check(err)
+		fileName = params["filename"]
+	}
+	f, err := os.Create(fileName)
+	check(err)
+	defer f.Close()
+
+	io.Copy(f, resp.Body)
+	defer resp.Body.Close()
+	f.Sync()
 }

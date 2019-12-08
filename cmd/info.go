@@ -17,11 +17,10 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/spf13/viper"
-	_package "github.com/syfun/package/pkg/package"
-	"log"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+	_package "github.com/syfun/package/pkg/package"
 )
 
 // infoCmd represents the info command
@@ -57,13 +56,15 @@ func init() {
 func getPackage(name string) {
 	url := fmt.Sprintf("%v/api/v1/packages/%v/", viper.GetString("server"), name)
 	resp, err := Get(url)
-	if err != nil {
-		log.Fatal(err)
+	check(err)
+	if resp.StatusCode != 200 {
+		fmt.Println(resp.Error())
+		return
 	}
+
 	var p _package.Package
-	if err := resp.Decode(&p); err != nil {
-		log.Fatal(err)
-	}
+	check(resp.Decode(&p))
+
 	fmt.Printf("Package:\n\nID: %v\nName: %v\n\n", p.ID, p.Name)
 	if p.Versions == nil || len(p.Versions) == 0 {
 		return
